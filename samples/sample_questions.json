@@ -1,0 +1,26 @@
+[
+  {
+    "question": "Who founded the Maurya Empire?",
+    "options": ["Chandragupta Maurya", "Ashoka", "Bindusara", "Bimbisara"],
+    "correctOptionIndex": 0,
+    "explanation": "Chandragupta Maurya founded the Maurya Empire in 322 BCE with the guidance of Chanakya.",
+    "difficulty": 1,
+    "tags": ["mauryan", "ancient-india"]
+  },
+  {
+    "question": "The Indus Valley Civilisation site of Lothal is located in which present-day state?",
+    "options": ["Gujarat", "Rajasthan", "Punjab", "Haryana"],
+    "correctOptionIndex": 0,
+    "explanation": "Lothal, known for its dockyard, is in Gujarat.",
+    "difficulty": 2,
+    "tags": ["ivc", "archaeology"]
+  },
+  {
+    "question": "Which ruler is associated with the Kalinga War?",
+    "options": ["Ashoka", "Harsha", "Samudragupta", "Kanishka"],
+    "correctOptionIndex": 0,
+    "explanation": "Ashoka fought the Kalinga War around 261 BCE; its bloodshed led him toward Buddhism.",
+    "difficulty": 1,
+    "tags": ["mauryan", "ashoka"]
+  }
+]

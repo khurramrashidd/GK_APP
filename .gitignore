@@ -1,0 +1,96 @@
+# =====================================================================
+# GK Quiz Hero — .gitignore
+# Place this file at the project root (next to pubspec.yaml)
+# =====================================================================
+
+# ------------------------- SECRETS: never commit ---------------------
+# Release signing keystore + passwords. If this is ever committed,
+# changing the password later does NOT undo it — git keeps history.
+android/key.properties
+android/*.jks
+android/*.keystore
+*.jks
+*.keystore
+
+# Firebase config with your real project keys.
+# Commit lib/firebase_options.dart.example instead, and regenerate the
+# real one locally with: flutterfire configure
+lib/firebase_options.dart
+google-services.json
+GoogleService-Info.plist
+
+# Any local env/secret files
+.env
+.env.*
+secrets.dart
+
+# ------------------------------ Flutter ------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.iml
+*.ipr
+*.iws
+
+# Generated code (regenerate with:
+#   flutter pub run build_runner build --delete-conflicting-outputs)
+*.g.dart
+*.freezed.dart
+
+# ------------------------------ Android ------------------------------
+android/local.properties
+android/.gradle/
+android/gradlew
+android/gradlew.bat
+android/captures/
+android/app/debug/
+android/app/profile/
+android/app/release/
+android/**/GeneratedPluginRegistrant.java
+
+# -------------------------------- iOS --------------------------------
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Runner.xcworkspace/xcshareddata/
+**/*.xcuserstate
+**/xcuserdata/
+
+# ------------------------------ Windows ------------------------------
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugin_registrant.h
+windows/flutter/generated_plugins.cmake
+windows/flutter/ephemeral/
+
+# ------------------------------ Firebase -----------------------------
+.firebase/
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+*.log
+
+# -------------------------------- Node -------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# --------------------------- Editors / OS ----------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# --------------------------- Misc artifacts --------------------------
+*.zip
+*.apk
+*.aab

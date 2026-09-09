@@ -1,0 +1,13 @@
+{
+  "name": "gk-quiz-bulk-upload",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "upload": "node upload.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

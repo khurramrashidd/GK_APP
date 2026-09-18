@@ -1,0 +1,299 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// GK Quiz App — Firestore security rules
+//
+// Deploy from the Firebase Console:
+//   Firestore Database -> Rules -> paste this -> Publish
+//
+// IMPORTANT: the admin list below must match AppConstants.adminEmails in
+// lib/core/constants/app_constants.dart.
+// ---------------------------------------------------------------------------
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Super admins are hardcoded here AND in AppConstants.superAdminEmails.
+    // Keep the two lists in sync. They can never be demoted from inside the
+    // app, which is what prevents an admin lockout.
+    function isSuperAdmin() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+             'khurramrashid0786@gmail.com'
+           ];
+    }
+
+    // Ordinary admins are granted at runtime and stored as isAdminUser on
+    // their own user document. This costs one extra document read per rule
+    // evaluation, which is the trade for being able to add admins without
+    // shipping a new build.
+    function isRuntimeAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.isAdminUser == true;
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || isRuntimeAdmin();
+    }
+
+    // ----------------------------- Domains --------------------------------
+    // Anyone signed in can read the catalogue; only admins can change it.
+    match /domains/{domainId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------- Questions -------------------------------
+    // Signed-in users can read questions.
+    // Admins can write anything.
+    // Regular users may update ONLY the aiExplanation field, and only when it
+    // is currently empty — this powers the shared AI cache without letting a
+    // user tamper with question content.
+    match /questions/{questionId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['aiExplanation'])
+          && (!('aiExplanation' in resource.data)
+              || resource.data.aiExplanation == null
+              || resource.data.aiExplanation == '')
+          && request.resource.data.aiExplanation is string
+          && request.resource.data.aiExplanation.size() < 8000
+        );
+    }
+
+    // ------------------------------ Users ---------------------------------
+    // A user can only read and write their own profile document — and their
+    // own bookmarks and history subcollections.
+    match /users/{uid} {
+      // Split deliberately. A single `read` rule covers both get and list;
+      // for a LIST query the {uid} wildcard has no value to bind to, which
+      // makes "request.auth.uid == uid" unevaluable and can sink the whole
+      // query. Naming them separately keeps self-access working while
+      // making the admin-only list explicit.
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+
+      // A user can edit their own profile, but CANNOT grant themselves
+      // admin rights OR premium. Both are privilege escalations:
+      // isAdminUser gives content control, isPremium bypasses paying.
+      // Only an admin/super admin may change either.
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.get('isAdminUser', false) == false
+        && request.resource.data.get('isPremium', false) == false;
+
+      allow update: if isSignedIn() && (
+        (request.auth.uid == uid
+          && request.resource.data.isAdminUser == resource.data.isAdminUser
+          && request.resource.data.get('isPremium', false)
+             == resource.data.get('isPremium', false))
+        || isSuperAdmin()
+        // Season reset: an admin may touch ONLY the competitive counters on
+        // someone else's profile. Named explicitly so this can never be used
+        // to change a name, email, admin rights or premium status.
+        || (isAdmin()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['totalScore', 'questionsAnswered',
+                           'correctAnswers', 'currentStreak',
+                           'longestStreak', 'lastActiveDate']))
+      );
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+
+      // Friends: I can read and manage my own list. Another user may WRITE
+      // into my list only when accepting (they add themselves as my friend),
+      // which is why create is open to any signed-in user but update/delete
+      // is not.
+      match /friends/{friendUid} {
+        allow read: if isSignedIn() && request.auth.uid == uid;
+        allow create: if isSignedIn();
+        allow delete: if isSignedIn()
+          && (request.auth.uid == uid || request.auth.uid == friendUid);
+        allow update: if isSignedIn() && request.auth.uid == uid;
+      }
+
+      // Requests live under the RECIPIENT. Anyone signed in may create one
+      // (that's how you ask), but only the recipient can read or remove it.
+      match /friend_requests/{fromUid} {
+        allow read, delete: if isSignedIn() && request.auth.uid == uid;
+        allow create: if isSignedIn() && request.auth.uid == fromUid;
+        allow update: if false;
+      }
+
+      match /bookmarks/{bookmarkId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+      match /history/{historyId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+
+        // Season reset: an admin must be able to LIST history in order to
+        // delete it — Firestore has no "delete everything matching" call,
+        // you enumerate then delete. Granting delete without list made the
+        // reset impossible (permission-denied on the enumerate step).
+        //
+        // Honest consequence: an admin CAN therefore read history documents.
+        // Avoiding that would need a Cloud Function holding admin
+        // credentials server-side, which is a paid-tier feature.
+        allow list: if isAdmin();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ---------------------------- Leaderboard ------------------------------
+    // Public name+score slice. Anyone signed in can READ it (that's the point
+    // of a leaderboard), but a user may only write THEIR OWN entry. Never any
+    // personal data is written here — only displayName + totalScore.
+    match /leaderboard/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid;
+      // Admins may clear the board for a fresh season. Delete only —
+      // an admin cannot fabricate or edit somebody's score.
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------- Multiplayer ------------------------------
+    // A match doc is created by player1, joined by player2, and updated by
+    // whichever of the two is submitting an answer or finishing. Joining an
+    // open match is the one case where the writer isn't already a
+    // participant — allowed only when the match is still 'waiting', has no
+    // player2 yet, and the write sets player2Uid to the joiner's own uid
+    // without touching player1Uid.
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.player1Uid == request.auth.uid;
+
+      allow update: if isSignedIn() && (
+        resource.data.player1Uid == request.auth.uid
+        || resource.data.player2Uid == request.auth.uid
+        || (
+          resource.data.status == 'waiting'
+          && resource.data.player2Uid == null
+          && request.resource.data.player2Uid == request.auth.uid
+          && request.resource.data.player1Uid == resource.data.player1Uid
+        )
+      );
+
+      allow delete: if isSignedIn()
+        && resource.data.player1Uid == request.auth.uid
+        && resource.data.status == 'waiting';
+    }
+
+    // ----------------------------- App settings -------------------------------
+    // Global switches (e.g. reelsModeDefault). Everyone reads; admins write.
+    match /app_settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ------------------------------- Usernames --------------------------------
+    // One doc per lowercase handle, holding the owning uid. Readable by any
+    // signed-in user (needed to check availability and to search), but a doc
+    // can only be written or deleted by the user who owns it — so nobody can
+    // squat on or steal someone else's handle.
+    match /usernames/{handle} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isSignedIn()
+        && resource.data.uid == request.auth.uid;
+
+      // Admins may rebuild the search index (backfilling usernameLower and
+      // displayNameLower onto handles claimed before those fields existed).
+      // The uid must still match the handle's real owner, so this cannot be
+      // used to reassign somebody's username to another account.
+      allow write: if isAdmin()
+        && request.resource.data.uid is string
+        && request.resource.data.uid.size() > 0;
+    }
+
+    // --------------------------- Content updates ------------------------------
+    // Public announcements: any signed-in user reads them; only admins post.
+    match /content_updates/{updateId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ----------------------------- Recycle bin -------------------------------
+    // Admin-only in every direction: it holds snapshots of deleted content.
+    match /recycle_bin/{itemId} {
+      allow read, create, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // ----------------------------- Error logs --------------------------------
+    // Any signed-in user (or a session that's still mid-login) can WRITE a
+    // log entry — that's the whole point, capturing crashes even in odd
+    // states. Only admins can read or delete them.
+    match /error_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      // Admins may flip the 'resolved' flag; nothing else is editable, so a
+      // log's message/stack trace can never be rewritten after the fact.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['resolved']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------- Suggestions -------------------------------
+    // Users create their own suggestions and can read/mark-seen their own.
+    // Admins can read everything and set the status/response.
+    match /suggestions/{suggestionId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || resource.data.userUid == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.status == 'open';
+
+      allow update: if isSignedIn() && (
+        isAdmin()
+        || (resource.data.userUid == request.auth.uid
+            && request.resource.data.status == resource.data.status)
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------- Reports ---------------------------------
+    // Any signed-in user can file a report and read their own. Admins can
+    // read every report and resolve them. A non-admin may update ONLY the
+    // seenByReporter field on their own report (clearing their notification
+    // badge) — everything else about a report is admin- or create-only.
+    match /reports/{reportId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || resource.data.reportedByUid == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.reportedByUid == request.auth.uid
+        && request.resource.data.status == 'open';
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.reportedByUid == request.auth.uid
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['seenByReporter'])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

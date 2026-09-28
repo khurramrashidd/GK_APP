@@ -1,0 +1,11 @@
+# 1. Rename this file to "key.properties" (remove .example)
+# 2. Generate your keystore first (see README "Release signing" section)
+# 3. Fill in the real values below
+# 4. NEVER commit key.properties or your .jks file — both are already gitignored.
+#    If you lose this file or forget the password, you can NEVER update your app
+#    again under the same listing — store a backup somewhere safe (not GitHub).
+
+storePassword=your_keystore_password
+keyPassword=your_key_password
+keyAlias=upload
+storeFile=../upload-keystore.jks

@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "domainId", "order": "ASCENDING" },
+        { "fieldPath": "version", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
